@@ -1,0 +1,3 @@
+Error: could not compile `playground`
+warning: unused variable: `x`
+help: consider removing it or prefixing with an underscore
