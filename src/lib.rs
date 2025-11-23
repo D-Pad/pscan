@@ -21,7 +21,6 @@ impl ErrorResponse {
     }
 }
 
-
 pub fn error_handler(error_response: ErrorResponse) -> i32 {
     
     let mut err_msg = String::from("\x1b[1;31m");
@@ -52,86 +51,87 @@ fn process_paths_from_args(
     parsed_args: &ParsedArgs
 ) -> Result<usize, ErrorResponse> {
 
-    fn highlight_matches(query: &str, matches: Vec<(usize, &str)>) -> usize {
+    fn highlight_matches(
+        search_path: &str, 
+        matches: Vec<(usize, &str, usize, usize)>
+    ) -> usize {
 
+        println!("\x1b[32mMatches found in {}:\x1b[0m", &search_path); 
+        
         let max_num_spaces: usize = match matches.last() {
             Some(x) => x.0.to_string().len(),
             None => 0 
         };
 
-        // let padding: String = match matches.last() {
-        //     Some(x) => " ".repeat(x.0.to_string().len()),
-        //     None => " ".to_string()
-        // };
-
         for line_of_text in &matches {
 
             let mut message_text: String = String::new();
-            let mut last = 0;
             
-            let line = line_of_text.1;
             let line_num = line_of_text.0;
-            
-            let lower_line = line.to_lowercase();
-            let lower_query = query.to_lowercase(); 
-          
+            let line = line_of_text.1;
+            let match_start = line_of_text.2;
+            let match_end = line_of_text.3;
+           
             let num_spaces: usize = line_num.to_string().len();
             let padding: String = " ".repeat(max_num_spaces - num_spaces + 1); 
 
-            message_text.push_str(&format!(
+            message_text.push_str(
+                &format!(
                     "\x1b[36m{}{}| \x1b[0m", 
                     padding,
                     line_num,
                 )
             );
 
-            for (idx, _) in lower_line.match_indices(&lower_query) {
+            message_text.push_str(&line[0..match_start]);
+            let matched_word = &line[match_start .. match_end];
 
-                message_text.push_str(&line[last..idx]);
-              
-                let matched_word = &line[idx .. idx + query.len()];
-
-                message_text.push_str("\x1b[1;33m"); // yellow
-                message_text.push_str(matched_word);
-                message_text.push_str("\x1b[0m");
-                last = idx + query.len();
-
-            }
-
-            message_text.push_str(&line_of_text.1[last..]);
+            message_text.push_str("\x1b[1;33m"); // yellow
+            message_text.push_str(matched_word);
+            message_text.push_str("\x1b[0m");
+            message_text.push_str(&line[match_end..]);
             println!("{message_text}");
         }
         println!(""); 
         matches.len()
     }
 
-
     fn search<'a>(
         query: &str, 
         contents: &'a str,
         case_sensitive: bool
-    ) -> Vec<(usize, &'a str)> {
+    ) -> Vec<(usize, &'a str, usize, usize)> {
 
         let mut matching_phrases = Vec::new(); 
         
         for (idx, line) in contents.lines().enumerate() {
 
-            let mut line_contains_match: bool = false;
-
-            if case_sensitive {
-                if line.contains(query) {
-                    line_contains_match = true;
+            let (has_match, start_idx, end_idx) = match case_sensitive {
+                true => {
+                    let m = line.contains(query);
+                    let i = match line.find(query) {
+                        Some(v) => v,
+                        None => 0
+                    };
+                    let e = i + query.len();
+                    (m, i, e)
+                },
+                false => {
+                    let lower_line = line.to_lowercase();
+                    let lower_q = &query.to_lowercase();
+                    let m = lower_line.contains(lower_q);
+                    let i = match lower_line.find(lower_q) {
+                        Some(v) => v,
+                        None => 0
+                    };
+                    let e = i + query.len();
+                    (m, i, e) 
                 }
-            } else {
-                if line.to_lowercase().contains(&query.to_lowercase()) {
-                    line_contains_match = true;
-                } 
-            }
+            };
 
-            if line_contains_match {
-                matching_phrases.push((idx + 1, line));
+            if has_match {
+                matching_phrases.push((idx + 1, line, start_idx, end_idx));
             } 
-
         }
         
         matching_phrases
@@ -169,8 +169,7 @@ fn process_paths_from_args(
         let matches = search(search_query, &file_contents, case_sensitive);
         let num_matches = matches.len(); 
         if num_matches > 0 { 
-            println!("\x1b[32mMatches found in {}:\x1b[0m", &search_path); 
-            highlight_matches(search_query, matches);
+            highlight_matches(search_path, matches);
         }
 
         Ok(num_matches)
