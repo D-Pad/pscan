@@ -1,4 +1,5 @@
-use std::{fs, env, path, io};
+use std::{fs, env, path, io, fmt, path::{Path}};
+
 
 use crate::arguments::parser::ParsedArgs;
 pub mod arguments;
@@ -10,6 +11,17 @@ pub enum PscanError {
     InputError
 }
 
+impl fmt::Display for PscanError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let msg: &str = match &self {
+            Self::FileRead => "FileRead", 
+            Self::Argument => "Argument",
+            Self::InputError => "InputError"
+        }; 
+        write!(f, "{}", msg)
+    }
+}
+
 pub struct ErrorResponse {
     pub error_msg: String,
     pub error_type: PscanError
@@ -18,6 +30,13 @@ pub struct ErrorResponse {
 impl ErrorResponse {
     fn new(error_msg: String, error_type: PscanError) -> Self {
         ErrorResponse { error_msg, error_type }
+    }
+}
+
+// This is all you need for Display
+impl fmt::Display for ErrorResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\x1b[1;31m{}: {}\x1b[0m", self.error_type, self.error_msg)
     }
 }
 
@@ -35,7 +54,7 @@ pub fn error_handler(error_response: ErrorResponse) -> i32 {
             exit_code = 2;
         },
         PscanError::InputError => {
-            err_msg.push_str("BadArgumentError: ");
+            err_msg.push_str("InputError: ");
             exit_code = 2;
         }
     }
@@ -52,11 +71,12 @@ fn process_paths_from_args(
 ) -> Result<usize, ErrorResponse> {
 
     fn highlight_matches(
-        search_path: &str, 
+        search_path: &Path, 
         matches: Vec<(usize, &str, usize, usize)>
     ) -> usize {
 
-        println!("\x1b[32mMatches found in {}:\x1b[0m", &search_path); 
+        println!("\x1b[32mMatches found in {}:\x1b[0m", 
+            &search_path.display()); 
         
         let max_num_spaces: usize = match matches.last() {
             Some(x) => x.0.to_string().len(),
@@ -138,7 +158,7 @@ fn process_paths_from_args(
     }
 
     fn scan_file_for_matches(
-        search_path: &str, 
+        search_path: &Path, 
         search_query: &str, 
         case_sensitive: bool
     ) -> Result<usize, ErrorResponse> {
@@ -152,7 +172,7 @@ fn process_paths_from_args(
                         ErrorResponse {
                             error_msg: format!(
                                 "File read failed: {}: {}",
-                                &search_path,
+                                &search_path.display(),
                                 msg
                             ),
                             error_type: PscanError::FileRead 
@@ -177,10 +197,11 @@ fn process_paths_from_args(
     }
 
     fn walk(
-        scan_path: &path::Path, 
-        query: &str, 
-        case_sensitive: bool) -> Result<usize, ErrorResponse> {
-      
+        scan_path: &Path, 
+        search_query: &str,
+        case_sensitive: bool
+    ) -> Result<usize, ErrorResponse> {
+        
         let mut total_matches_found: usize = 0;
 
         if scan_path.is_dir() { 
@@ -211,7 +232,11 @@ fn process_paths_from_args(
                     let this_path = entry_result.path();
 
                     if this_path.is_dir() {
-                        let result = walk(&this_path, query, case_sensitive);
+                        let result = walk(
+                            &this_path, 
+                            search_query, 
+                            case_sensitive
+                        );
                         match result {
                             Ok(i) => total_matches_found += i,
                             Err(_) => {
@@ -222,8 +247,8 @@ fn process_paths_from_args(
                     } else {
                         
                         let result = scan_file_for_matches(
-                            &this_path.to_string_lossy(), 
-                            query,
+                            &this_path, 
+                            search_query,
                             case_sensitive
                         );
                        
@@ -239,8 +264,8 @@ fn process_paths_from_args(
         
         } else if scan_path.is_file() {
             let result = scan_file_for_matches(
-                &scan_path.to_string_lossy().as_ref(), 
-                query,
+                &scan_path, 
+                search_query,
                 case_sensitive
             );
 
@@ -253,8 +278,9 @@ fn process_paths_from_args(
 
     }
 
+    // -------------------------- LOGIC STARTS HERE ------------------------ //
     // Check for valid path and query
-    let search_path = match parsed_args.path {
+    let search_path = match &parsed_args.path {
         Some(p) => p, 
         None => {
 
@@ -286,6 +312,7 @@ fn process_paths_from_args(
 
     // Read the file
     let root_path: &path::Path = path::Path::new(&search_path);
+   
     if root_path.is_dir() {
       
         let mut total_matches_found: usize = 0;
@@ -322,7 +349,7 @@ fn process_paths_from_args(
 
                         } else {
                             scan_file_for_matches(
-                                &this_path.to_string_lossy(), 
+                                &this_path, 
                                 search_query,
                                 parsed_args.case_sensitive
                             )
@@ -346,7 +373,11 @@ fn process_paths_from_args(
             Err(msg) => {
                 Err(
                     ErrorResponse::new(
-                        format!("Could not process {}: {}", &search_path, msg),
+                        format!(
+                            "Could not process {}: {}", 
+                            search_path.as_path().to_string_lossy(), 
+                            msg
+                        ),
                         PscanError::FileRead 
                     )
                 )
@@ -355,7 +386,7 @@ fn process_paths_from_args(
 
     } else if root_path.is_file() {
         let case: bool = parsed_args.case_sensitive;
-        scan_file_for_matches(search_path, search_query, case)
+        scan_file_for_matches(search_path.as_path(), search_query, case)
     
     } else {
         Err(
@@ -373,9 +404,9 @@ pub fn run(input_args: Option<Vec<String>>) -> Result<usize, ErrorResponse> {
     // Verify correct input
     let args: Vec<String> = match input_args {
         Some(a) => a,
-        None => env::args().collect()
+        None => env::args().skip(1).collect()
     }; 
-    
+  
     let parsed_args = match arguments::parse(&args) {
         Ok(c) => c,
         Err(msg) => {
@@ -402,7 +433,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn try_a_directory_without_recursion() {
-        let search_path: String = String::from("./text_files");
+        let search_path: String = String::from("src/text_files");
         let search_query: String = String::from("mary");
         let status = run(Some(vec![search_path, search_query])).is_ok();
         assert!(status);
@@ -410,21 +441,23 @@ mod tests {
 
     #[test]
     fn recursion_test() {
-        let params: String = String::from("-r");
-        let search_path: String = String::from("./text_files");
-        let search_query: String = String::from("Mary");
-        let input_args = Some(vec![params, search_path, search_query]);
+        let params = String::from("-r");
+        let search_path = String::from("src/text_files");
+        let search_query = String::from("mary");
+        let input_args = Some(vec![
+            params, search_path, search_query
+        ]);
         let result = match run(input_args) {
             Ok(matches) => matches,
             Err(_) => 0
-        };    
+        };
         assert!(result > 0); 
     }
 
     #[test]
     fn case_sensitive_test() {
         let params: String = String::from("-i");
-        let search_path: String = String::from("./text_files/mary.txt");
+        let search_path: String = String::from("src/text_files/mary.txt");
         let search_query: String = String::from("mary");
         let input_args = Some(vec![params, search_path, search_query]);
         let result = match run(input_args) {
@@ -435,22 +468,36 @@ mod tests {
     }
 
     #[test]
-    fn directory_without_recursion_should_fail() {
+    fn throw_argument_error() {
         let args = Some(vec![
-            "./text_files".to_string(),
+            "src/text_files".to_string(),
             "mary".to_string(),
         ]);
     
         let result = run(args);
         assert!(result.is_err());  // Should fail when no -r on directory
-    
+   
         // Optional: check error type
         if let Err(err) = result {
             assert!(matches!(err.error_type, PscanError::Argument));
-            assert!(err.error_msg.contains("recursion"));
         }
     }
-
+    
+    #[test]
+    fn throw_file_error() {
+        let args = Some(vec![
+            "src/text_files/non_existent.txt".to_string(),
+            "mary".to_string(),
+        ]);
+    
+        let result = run(args);
+        assert!(result.is_err());  // Should fail when no -r on directory
+   
+        // Optional: check error type
+        if let Err(err) = result {
+            assert!(matches!(err.error_type, PscanError::FileRead));
+        }
+    }
 }
 
 

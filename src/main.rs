@@ -1,12 +1,12 @@
-use pscan::{error_handler, run};
+use pscan;
 use std::process;
 
 
 fn main() {
-    match run(None) {
+    match pscan::run(None) {
         Ok(exit_code) => exit_code,
         Err(response) => {
-            process::exit(error_handler(response))
+            process::exit(pscan::error_handler(response))
         }
     };
 }
