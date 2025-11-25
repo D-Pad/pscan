@@ -1,4 +1,11 @@
-use std::{env, fmt, fs, io, path::{Path}, collections::VecDeque};
+use std::{
+    collections::VecDeque, 
+    env, 
+    fmt, 
+    fs, 
+    io::{BufReader, BufRead}, 
+    path::Path
+};
 
 use crate::arguments::parser::{ParsedArgs, HELP_TEXT};
 pub mod arguments;
@@ -110,7 +117,7 @@ fn process_paths_from_args(
 
     fn highlight_matches(
         search_path: &Path, 
-        matches: Vec<(usize, &str, usize, usize)>
+        matches: Vec<(usize, String, usize, usize)>
     ) -> usize {
 
         println!("\x1b[32mMatches found in \x1b[1;4;35m{}:\x1b[0m", 
@@ -128,7 +135,7 @@ fn process_paths_from_args(
             let mut message_text: String = String::new();
             
             let line_num = line_of_text.0;
-            let line = line_of_text.1;
+            let line = &line_of_text.1;
             let match_start = line_of_text.2;
             let match_end = line_of_text.3;
            
@@ -164,17 +171,22 @@ fn process_paths_from_args(
 
     fn search<'a>(
         query: &str, 
-        contents: &'a str,
+        reader: &mut BufReader<fs::File>,
         parsed_args: &ParsedArgs
-    ) -> Vec<(usize, &'a str, usize, usize)> {
+    ) -> Vec<(usize, String, usize, usize)> {
 
         let mut after_context = 0;
         let mut before_context:
-            VecDeque<(usize, &'a str, usize, usize)> = VecDeque::new();
+            VecDeque<(usize, String, usize, usize)> = VecDeque::new();
 
         let mut matching_phrases = Vec::new(); 
         
-        for (idx, line) in contents.lines().enumerate() {
+        for (idx, line) in reader.lines().enumerate() {
+
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => continue
+            };
 
             let (
                 has_match, 
@@ -238,32 +250,27 @@ fn process_paths_from_args(
             return Ok(0)    
         }; 
 
-        let file_contents = match fs::read_to_string(&search_path) {
-            Ok(text) => text,
+        let file = match fs::File::open(&search_path) {
+            Ok(f) => f,
             Err(msg) => {
-                
-                if msg.kind() != io::ErrorKind::InvalidData {
-                    return Err(
-                        ErrorResponse {
-                            error_msg: format!(
-                                "File read failed: {}: {}",
-                                &search_path.display(),
-                                msg
-                            ),
-                            error_type: PscanError::FileRead 
-                        }
-                    );
-                } else {
-
-                    // Skip binary files, and files that are non UTF-8
-                    return Ok(0);
-                }
+                return Err(
+                    ErrorResponse {
+                        error_msg: format!(
+                            "File open failed: {}: {}",
+                            &search_path.display(),
+                            msg
+                        ),
+                        error_type: PscanError::FileRead 
+                    }
+                );
             } 
         };
 
+        let mut reader: BufReader<_> = BufReader::new(file);
+        
         let matches = search(
             parsed_args.query, 
-            &file_contents, 
+            &mut reader, 
             parsed_args
         );
         
@@ -498,7 +505,6 @@ mod tests {
         let input_args = Some(vec![
             params, search_path, search_query
         ]);
-        println!("\x1b[1;43;36mRECURSION TEST\x1b[0m\n", ); 
         let result = match run(input_args) {
             Ok(matches) => {
                 matches
@@ -514,7 +520,6 @@ mod tests {
         let search_path: String = String::from("src/text_files/mary.txt");
         let search_query: String = String::from("mary");
         let input_args = Some(vec![params, search_path, search_query]);
-        print!("\x1b[1;43;36mCASE SENSITIVE TEST\x1b[0m"); 
         let result = match run(input_args) {
             Ok(x) => x,
             Err(_) => 0
