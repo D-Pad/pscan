@@ -184,7 +184,12 @@ fn process_paths_from_args(
         for (idx, line) in reader.lines().enumerate() {
 
             let line = match line {
-                Ok(l) => l,
+                Ok(l) => {
+                    match parsed_args.trim {
+                        true => l.trim().to_string(),
+                        false => l 
+                    }
+                },
                 Err(_) => continue
             };
 
