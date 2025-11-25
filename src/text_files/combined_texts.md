@@ -1,3 +1,4 @@
+wamboozle
 # Brown fox
 The quick brown fox jumps over the lazy dog.
 A journey of a thousand miles begins with a single step.
@@ -52,5 +53,12 @@ She sells sea shells by the sea shore.
 Peter Piper picked a peck of pickled peppers.
 How much wood would a woodchuck chuck
 if a woodchuck could chuck wood?
+
+# Context Testing
+This text's sole purpose in this world is to test 
+context (wamboozle) options, which can be used by 
+passing `-A`, `-B`, or `-C` flags, followed by some 
+numerical value. The flags means "after", "before", 
+and "context" (both), respectively.
 
 

@@ -1,40 +1,132 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, fmt};
+
+
+pub const HELP_TEXT: &str = r#"
+pscan - A grep-like tool with detailed match location and context lines
+
+USAGE:
+    pscan [OPTIONS] <PATH> <QUERY> [-I ext1 ext2 ...] [-E ext1 ext2 ...]
+
+POSITIONAL ARGUMENTS:
+    PATH                Directory or file to search (required)
+    QUERY               Text or pattern to search for (required)
+
+SEARCH OPTIONS:
+    -i                  Perform case-insensitive matching (default is case-sensitive)
+    -r                  Search directories recursively
+    -s                  Show parsed arguments before starting search (useful for debugging)
+
+CONTEXT CONTROL:
+    -A, --after N       Print N lines of trailing context after each match
+    -B, --before N      Print N lines of leading context before each match
+    -C, --context N     Print N lines of context both before and after each match
+                        (equivalent to -B N -A N)
+
+FILE TYPE FILTERING:
+    -I, --include-file-types ext1 ext2 ...
+                        Only search files whose extension is in the list
+                        (e.g. -I rs toml yaml)
+    -E, --exclude-file-types ext1 ext2 ...
+                        Skip files whose extension is in the list
+                        (e.g. -E jpg png gif)
+
+EXAMPLES:
+    pscan ./src "println!"
+    pscan -i -r . "error handling"
+    pscan -C 2 Cargo.toml "version"
+    pscan -I rs toml -r src "unsafe"
+    pscan --before 1 --after 3 logs "ERROR"
+
+NOTE:
+    Short options can be combined: -ris is equivalent to -r -i -s
+    Extensions for -I/-E should be given without leading dot
+"#; 
+
 
 pub struct ParsedArgs<'a> {
-    pub path: Option<PathBuf>,
-    pub query: Option<&'a str>,
+    
+    pub path: PathBuf,
+    pub query: &'a str,
     
     pub recursive: bool,
     
     pub case_sensitive: bool,
+
+    pub show_args: bool,
     
-    pub context_before: u8,  
-    pub context_after: u8,
+    pub context_before: usize,  
+    pub context_after: usize,
     
     pub include_file_types: Option<Vec<&'a str>>,
     pub exclude_file_types: Option<Vec<&'a str>>,
 
+    pub help: bool
+
+}
+
+impl<'a> fmt::Display for ParsedArgs<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\x1b[1;36mParsed Arguments: \x1b[0m\x1b[1m{{\x1b[0m")?;
+        write!(f, "\n  \x1b[33mpath:              \x1b[0m {}",
+            self.path.display())?;
+        write!(f, "\n  \x1b[33mquery:             \x1b[0m {}",
+            self.query)?;
+        write!(f, "\n  \x1b[33mrecursive:     \x1b[0m     {}",
+            self.recursive)?;
+        write!(f, "\n  \x1b[33mcase_sensitive:\x1b[0m     {}", 
+            self.case_sensitive)?;
+        write!(f, "\n  \x1b[33mcontext_before:\x1b[0m     {}",
+            self.context_before)?;
+        write!(f, "\n  \x1b[33mcontext_after:\x1b[0m      {}",
+            self.context_after)?;
+        if let Some(t) = &self.include_file_types {
+            write!(f, "\n  \x1b[33minclude_file_types:\x1b[0m {:?}", t)?;
+        };
+        if let Some(t) = &self.exclude_file_types {
+            write!(f, "\n  \x1b[33mexclude_file_types:\x1b[0m {:?}", t)?;
+        };
+        write!(f, "\n  \x1b[33mshow_args:\x1b[0m          {}",
+            &self.show_args)?;
+        write!(f, "\n\x1b[1m}}\x1b[0m")
+    }
 }
 
 impl<'a> ParsedArgs<'a> {
     
     fn new(args: &'a [String]) -> Result<Self, &'static str> {
-       
-        if args.len() >= 2 {
+
+        if args.len() == 1 && args.contains(&"--help".to_string()) {
+            Ok(ParsedArgs {
+                path: PathBuf::from(""),
+                query: "",
+                recursive: false,
+                case_sensitive: false,
+                show_args: false,
+                context_before: 0,  
+                context_after: 0,
+                include_file_types: None,
+                exclude_file_types: None,
+                help: true 
+            })
+        }
+        else if args.len() >= 2 {
             
-            let mut path: Option<PathBuf> = None;
-            let mut query: Option<&'a str> = None;
+            let mut path: PathBuf = PathBuf::from("");
+            let mut query: &'a str = "";
 
             let mut recursive: bool = false;
+            let mut show_args: bool = false;
             let mut case_sensitive: bool = true;
 
-            let mut context_before: u8 = 0;
-            let mut context_after: u8 = 0;
-
+            let mut context_before: usize = 0;
+            let mut context_after: usize = 0;
+            
             let mut include_file_types: Option<Vec<&'a str>> = None;
             let mut exclude_file_types: Option<Vec<&'a str>> = None;
 
             let mut key: char = '!';
+
+            let mut help: bool = false;
 
             let mut iter_count = 0;
             while iter_count < args.len() {
@@ -44,12 +136,14 @@ impl<'a> ParsedArgs<'a> {
                 if argument.starts_with('-') {
                  
                     let arg_str = argument.as_str();
+                    key = '!';
                     match arg_str {
 
                         // Context options
                         "-A"      | "-B"       | "-C" | 
                         "--after" | "--before" | "--context" => { 
-                            if let Ok(d) = args[iter_count + 1].parse::<u8>() {
+                            let n = args[iter_count + 1].parse::<usize>();
+                            if let Ok(d) = n {
                                 match arg_str { 
                                     "-A" | "--after" => { 
                                         context_after = d;
@@ -78,21 +172,21 @@ impl<'a> ParsedArgs<'a> {
                             key = 'I';
                         },
                         
+                        // Print the help menu and exit
+                        "--help" => { help = true; break } 
+
                         // Single param short options: Ex: -ri
                         _ => {
                             for param in argument.chars() {
                                 if param == 'i' { case_sensitive = false }
                                 else if param == 'r' { recursive = true }
+                                else if param == 's' { show_args = true }
                             }
                         }
                     }
                 } else {
                     
-                    if path.is_none() { 
-                        path = Some(PathBuf::from(argument.as_str())); 
-                    } else if query.is_none() { 
-                        query = Some(argument.as_str()) 
-                    } else if key != '!' {
+                    if key != '!' {
                         if key == 'I' {
                             if let Some(ref mut vals) = include_file_types {
                                 vals.push(argument);
@@ -104,25 +198,40 @@ impl<'a> ParsedArgs<'a> {
                             }
                         }
                     }
+                    else if path.as_os_str().is_empty() { 
+                        path = PathBuf::from(argument.as_str()); 
+                    }
+                    else if query == "" { 
+                        query = argument.as_str() 
+                    } 
                 }
 
                 iter_count += 1;
             }
 
-            let parsed_args: ParsedArgs = ParsedArgs {
-                query,
-                path,
-                recursive,
-                case_sensitive, 
-                context_before, 
-                context_after, 
-                include_file_types, 
-                exclude_file_types
-            }; 
-            
-            Ok(parsed_args)
-    
+            if path.as_os_str().is_empty() {
+                Err("ArgumentError: Must pass a root path to search")
+            }
+            else if query == "" {
+                Err("ArgumentError: Must pass a search query")
+            }
+            else {
+                Ok(ParsedArgs {
+                    query,
+                    path,
+                    recursive,
+                    case_sensitive, 
+                    show_args, 
+                    context_before, 
+                    context_after, 
+                    include_file_types, 
+                    exclude_file_types,
+                    help, 
+                }) 
+            }
+        
         } else {
+            println!("ARGS RECEIVED: {:?}", args); 
             Err("Must pass a search path and phrase, in that order")
         }
     }

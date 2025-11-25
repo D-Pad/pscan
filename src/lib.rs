@@ -1,7 +1,6 @@
-use std::{fs, env, path, io, fmt, path::{Path}};
+use std::{env, fmt, fs, io, path::{Path}, collections::VecDeque};
 
-
-use crate::arguments::parser::ParsedArgs;
+use crate::arguments::parser::{ParsedArgs, HELP_TEXT};
 pub mod arguments;
 
 
@@ -70,6 +69,45 @@ fn process_paths_from_args(
     parsed_args: &ParsedArgs
 ) -> Result<usize, ErrorResponse> {
 
+    fn file_is_ignored<'a>(
+        path: &Path, 
+        parsed_args: &ParsedArgs 
+    ) -> bool {
+        
+        let ext = get_extension(&path);
+        let ext_str: &str = &ext;
+        let mut should_ignore: bool = match &parsed_args.exclude_file_types {
+            Some(e) => {
+                if ext.len() > 0 && e.contains(&ext_str) {
+                    true     
+                } else {
+                    false
+                }
+            },
+            None => false
+        };
+        if !should_ignore {  // Because it's not been excluded
+            if let Some(i) = &parsed_args.include_file_types {
+                if ext.len() > 0 && i.contains(&ext_str) {
+                    should_ignore = false 
+                } else {
+                    should_ignore = true
+                }
+            }
+        };
+        should_ignore
+    }
+
+    fn get_extension(path: &Path) -> String {
+        let ext = path.extension();
+        if let Some(p) = ext {
+            if let Some(d) = p.to_str() {
+                return d.to_string() 
+            }
+        }
+        "".to_string()
+    }
+
     fn highlight_matches(
         search_path: &Path, 
         matches: Vec<(usize, &str, usize, usize)>
@@ -83,6 +121,8 @@ fn process_paths_from_args(
             None => 0 
         };
 
+        let mut last_line_num: usize = 0;
+
         for line_of_text in &matches {
 
             let mut message_text: String = String::new();
@@ -94,6 +134,10 @@ fn process_paths_from_args(
            
             let num_spaces: usize = line_num.to_string().len();
             let padding: String = " ".repeat(max_num_spaces - num_spaces + 1); 
+
+            if last_line_num > 0 && line_num - last_line_num > 1 {
+                message_text.push_str("\x1b[1;35m ...\x1b[0m\n");
+            };
 
             message_text.push_str(
                 &format!(
@@ -111,6 +155,8 @@ fn process_paths_from_args(
             message_text.push_str("\x1b[0m");
             message_text.push_str(&line[match_end..]);
             println!("{message_text}");
+       
+            last_line_num = line_num;
         }
         println!(""); 
         matches.len()
@@ -119,14 +165,22 @@ fn process_paths_from_args(
     fn search<'a>(
         query: &str, 
         contents: &'a str,
-        case_sensitive: bool
+        parsed_args: &ParsedArgs
     ) -> Vec<(usize, &'a str, usize, usize)> {
+
+        let mut after_context = 0;
+        let mut before_context:
+            VecDeque<(usize, &'a str, usize, usize)> = VecDeque::new();
 
         let mut matching_phrases = Vec::new(); 
         
         for (idx, line) in contents.lines().enumerate() {
 
-            let (has_match, start_idx, end_idx) = match case_sensitive {
+            let (
+                has_match, 
+                start_idx, 
+                end_idx
+            ) = match parsed_args.case_sensitive {
                 true => {
                     let m = line.contains(query);
                     let i = match line.find(query) {
@@ -150,7 +204,25 @@ fn process_paths_from_args(
             };
 
             if has_match {
+                for _ in 0..before_context.len() {
+                    if let Some(r) = before_context.pop_front() {
+                        matching_phrases.push(r)
+                    };
+                };
                 matching_phrases.push((idx + 1, line, start_idx, end_idx));
+                after_context = parsed_args.context_after;
+            
+            } else {
+                if after_context > 0 {
+                    matching_phrases.push((idx + 1, line, 0, 0));
+                    after_context -= 1;
+                }
+                else if parsed_args.context_before > 0 {
+                    before_context.push_back((idx + 1, line, 0, 0));
+                    if before_context.len() > parsed_args.context_before {
+                        before_context.pop_front();
+                    }
+                }
             } 
         }
         
@@ -158,10 +230,13 @@ fn process_paths_from_args(
     }
 
     fn scan_file_for_matches(
-        search_path: &Path, 
-        search_query: &str, 
-        case_sensitive: bool
+        search_path: &Path,
+        parsed_args: &ParsedArgs
     ) -> Result<usize, ErrorResponse> {
+
+        if file_is_ignored(search_path, &parsed_args) {
+            return Ok(0)    
+        }; 
 
         let file_contents = match fs::read_to_string(&search_path) {
             Ok(text) => text,
@@ -186,7 +261,12 @@ fn process_paths_from_args(
             } 
         };
 
-        let matches = search(search_query, &file_contents, case_sensitive);
+        let matches = search(
+            parsed_args.query, 
+            &file_contents, 
+            parsed_args
+        );
+        
         let num_matches = matches.len(); 
         if num_matches > 0 { 
             highlight_matches(search_path, matches);
@@ -198,8 +278,7 @@ fn process_paths_from_args(
 
     fn walk(
         scan_path: &Path, 
-        search_query: &str,
-        case_sensitive: bool
+        parsed_args: &ParsedArgs
     ) -> Result<usize, ErrorResponse> {
         
         let mut total_matches_found: usize = 0;
@@ -224,7 +303,7 @@ fn process_paths_from_args(
                     );
                 }
             };
-
+            
             for entry_result in entries {
                
                 if let Ok(entry_result) = entry_result {
@@ -232,11 +311,7 @@ fn process_paths_from_args(
                     let this_path = entry_result.path();
 
                     if this_path.is_dir() {
-                        let result = walk(
-                            &this_path, 
-                            search_query, 
-                            case_sensitive
-                        );
+                        let result = walk(&this_path, parsed_args);
                         match result {
                             Ok(i) => total_matches_found += i,
                             Err(_) => {
@@ -245,11 +320,10 @@ fn process_paths_from_args(
                         }
 
                     } else {
-                        
+                      
                         let result = scan_file_for_matches(
                             &this_path, 
-                            search_query,
-                            case_sensitive
+                            parsed_args
                         );
                        
                         match result {
@@ -263,10 +337,19 @@ fn process_paths_from_args(
             }
         
         } else if scan_path.is_file() {
+            
+            let ext = get_extension(&parsed_args.path);
+            let ext_str: &str = &ext;
+            
+            if let Some(e) = &parsed_args.exclude_file_types {
+                if ext.len() > 0 && e.contains(&ext_str) {
+                    return Ok(0) 
+                } 
+            };
+
             let result = scan_file_for_matches(
                 &scan_path, 
-                search_query,
-                case_sensitive
+                parsed_args 
             );
 
             if let Err(_) = result {
@@ -277,43 +360,12 @@ fn process_paths_from_args(
         Ok(total_matches_found)
 
     }
-
+    
+    //=======================================================================//
     // -------------------------- LOGIC STARTS HERE ------------------------ //
+    //=======================================================================// 
     // Check for valid path and query
-    let search_path = match &parsed_args.path {
-        Some(p) => p, 
-        None => {
-
-            let err_msg = String::from(
-                "ArgumentError: Must pass a root path to search"
-            );
-            
-            return Err(
-                ErrorResponse {
-                    error_msg: err_msg,
-                    error_type: PscanError::Argument 
-                }
-            )
-        }
-    };
-
-    let search_query = match parsed_args.query {
-        Some(q) => q, 
-        None => {
-            let err_msg = String::from("Must pass search query");
-            return Err(
-                ErrorResponse {
-                    error_msg: err_msg,
-                    error_type: PscanError::Argument 
-                }
-            );       
-        }
-    };
-
-    // Read the file
-    let root_path: &path::Path = path::Path::new(&search_path);
-   
-    if root_path.is_dir() {
+    if parsed_args.path.as_path().is_dir() {
       
         let mut total_matches_found: usize = 0;
 
@@ -327,10 +379,9 @@ fn process_paths_from_args(
                     error_type: PscanError::Argument 
                 }
             );            
-
         }
 
-        match fs::read_dir(&root_path) {
+        match fs::read_dir(&parsed_args.path) {
             
             Ok(entries) => {
 
@@ -339,20 +390,13 @@ fn process_paths_from_args(
                     if let Ok(entry) = entry_result {
                         
                         let this_path = entry.path();
-   
+
                         let result = if this_path.is_dir() {
-                            walk(
-                                &this_path, 
-                                search_query, 
-                                parsed_args.case_sensitive
-                            )
+                            walk(&this_path, parsed_args)
 
                         } else {
-                            scan_file_for_matches(
-                                &this_path, 
-                                search_query,
-                                parsed_args.case_sensitive
-                            )
+
+                            scan_file_for_matches(&this_path, parsed_args)
 
                         };
                         
@@ -375,7 +419,7 @@ fn process_paths_from_args(
                     ErrorResponse::new(
                         format!(
                             "Could not process {}: {}", 
-                            search_path.as_path().to_string_lossy(), 
+                            parsed_args.path.as_path().to_string_lossy(), 
                             msg
                         ),
                         PscanError::FileRead 
@@ -384,9 +428,8 @@ fn process_paths_from_args(
             }
         }
 
-    } else if root_path.is_file() {
-        let case: bool = parsed_args.case_sensitive;
-        scan_file_for_matches(search_path.as_path(), search_query, case)
+    } else if parsed_args.path.as_path().is_file() {
+        scan_file_for_matches(&parsed_args.path, &parsed_args)
     
     } else {
         Err(
@@ -419,6 +462,13 @@ pub fn run(input_args: Option<Vec<String>>) -> Result<usize, ErrorResponse> {
         }
     };
 
+    if parsed_args.help {
+        println!("{HELP_TEXT}");
+        return Ok(0)
+    } 
+    else if parsed_args.show_args {
+        println!("{}", parsed_args);
+    };
     process_paths_from_args(&parsed_args)
 
 }
@@ -447,8 +497,11 @@ mod tests {
         let input_args = Some(vec![
             params, search_path, search_query
         ]);
+        println!("\x1b[1;43;36mRECURSION TEST\x1b[0m\n", ); 
         let result = match run(input_args) {
-            Ok(matches) => matches,
+            Ok(matches) => {
+                matches
+            },
             Err(_) => 0
         };
         assert!(result > 0); 
@@ -460,6 +513,7 @@ mod tests {
         let search_path: String = String::from("src/text_files/mary.txt");
         let search_query: String = String::from("mary");
         let input_args = Some(vec![params, search_path, search_query]);
+        print!("\x1b[1;43;36mCASE SENSITIVE TEST\x1b[0m"); 
         let result = match run(input_args) {
             Ok(x) => x,
             Err(_) => 0
@@ -477,7 +531,6 @@ mod tests {
         let result = run(args);
         assert!(result.is_err());  // Should fail when no -r on directory
    
-        // Optional: check error type
         if let Err(err) = result {
             assert!(matches!(err.error_type, PscanError::Argument));
         }
