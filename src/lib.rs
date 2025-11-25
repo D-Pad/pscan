@@ -4,7 +4,8 @@ use std::{
     fmt, 
     fs, 
     io::{BufReader, BufRead}, 
-    path::Path
+    path::Path,
+    cmp::min
 };
 
 use crate::arguments::parser::{ParsedArgs, HELP_TEXT};
@@ -116,13 +117,27 @@ fn process_paths_from_args(
     }
 
     fn highlight_matches(
-        search_path: &Path, 
+        parsed_args: &ParsedArgs,
+        file_name: String,
         matches: Vec<(usize, String, usize, usize)>
     ) -> usize {
 
-        println!("\x1b[32mMatches found in \x1b[1;4;35m{}:\x1b[0m", 
-            &search_path.display()); 
-        
+        let mut start_msg: String = format!(
+            "\x1b[1;4;35m{}:\x1b[0m", 
+            file_name 
+        );
+
+        if parsed_args.count_only {
+            let spaces: String = " ".repeat(
+                min(50, 50 - format!("{}", file_name).len())
+            ); 
+            start_msg.push_str(&format!(" {}-> {}", spaces, matches.len())); 
+            println!("{start_msg}");
+            return matches.len()
+        };
+                
+        println!("\x1b[32mMatches in {start_msg}"); 
+ 
         let max_num_spaces: usize = match matches.last() {
             Some(x) => x.0.to_string().len(),
             None => 0 
@@ -291,9 +306,10 @@ fn process_paths_from_args(
         
         let num_matches = matches.len(); 
         
-        if num_matches > 0 { 
-            highlight_matches(search_path, matches);
-        }
+        if num_matches > 0 {
+            let file_name: String = format!("{}", &search_path.display());
+            highlight_matches(&parsed_args, file_name, matches);
+        };
 
         Ok(num_matches)
 

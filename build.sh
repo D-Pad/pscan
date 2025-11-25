@@ -3,6 +3,6 @@
 
 cargo build
 # cargo test
-./target/debug/pscan -rsi ./src/text_files "user" -A 4 -B 3 
+./target/debug/pscan -rci ./src/text_files "mary" -A 5 -B 3 
 
 

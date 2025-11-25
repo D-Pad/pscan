@@ -17,6 +17,7 @@ SEARCH OPTIONS:
     -s                  Show parsed arguments before starting search (useful for debugging)
     -t                  Trims white space from any matching lines
     -b                  Enables binary file reading.
+    -c                  Only shows the number of matches found per file
 
 CONTEXT CONTROL:
     -A, --after N       Print N lines of trailing context after each match
@@ -51,14 +52,11 @@ pub struct ParsedArgs<'a> {
     pub query: &'a str,
     
     pub recursive: bool,
-    
     pub case_sensitive: bool,
-
     pub show_args: bool,
-    
     pub trim: bool,
-
     pub binary_ok: bool,
+    pub count_only: bool,
     
     pub context_before: usize,  
     pub context_after: usize,
@@ -85,6 +83,8 @@ impl<'a> fmt::Display for ParsedArgs<'a> {
             self.binary_ok)?;
         write!(f, "\n  \x1b[33mcase_sensitive:\x1b[0m     {}", 
             self.case_sensitive)?;
+        write!(f, "\n  \x1b[33mcount_only:    \x1b[0m     {}", 
+            self.count_only)?;
         write!(f, "\n  \x1b[33mcontext_before:\x1b[0m     {}",
             self.context_before)?;
         write!(f, "\n  \x1b[33mcontext_after:\x1b[0m      {}",
@@ -113,7 +113,8 @@ impl<'a> ParsedArgs<'a> {
                 case_sensitive: false,
                 show_args: false,
                 trim: false, 
-                binary_ok: false, 
+                binary_ok: false,
+                count_only: false,
                 context_before: 0, 
                 context_after: 0,
                 include_file_types: None,
@@ -130,6 +131,7 @@ impl<'a> ParsedArgs<'a> {
             let mut show_args: bool = false;
             let mut trim: bool = false;
             let mut binary_ok: bool = false;
+            let mut count_only: bool = false;
             let mut case_sensitive: bool = true;
 
             let mut context_before: usize = 0;
@@ -197,6 +199,7 @@ impl<'a> ParsedArgs<'a> {
                                 else if param == 's' { show_args = true }
                                 else if param == 't' { trim = true }
                                 else if param == 'b' { binary_ok = true }
+                                else if param == 'c' { count_only = true }
                             }
                         }
                     }
@@ -240,6 +243,7 @@ impl<'a> ParsedArgs<'a> {
                     show_args,
                     trim,
                     binary_ok,
+                    count_only,
                     context_before, 
                     context_after, 
                     include_file_types, 
