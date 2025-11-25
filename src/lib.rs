@@ -113,7 +113,7 @@ fn process_paths_from_args(
         matches: Vec<(usize, &str, usize, usize)>
     ) -> usize {
 
-        println!("\x1b[32mMatches found in {}:\x1b[0m", 
+        println!("\x1b[32mMatches found in \x1b[1;4;35m{}:\x1b[0m", 
             &search_path.display()); 
         
         let max_num_spaces: usize = match matches.last() {
@@ -268,6 +268,7 @@ fn process_paths_from_args(
         );
         
         let num_matches = matches.len(); 
+        
         if num_matches > 0 { 
             highlight_matches(search_path, matches);
         }

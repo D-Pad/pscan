@@ -3,6 +3,6 @@
 
 cargo build
 # cargo test
-./target/debug/pscan -is ./src/text_files/combined_texts.md "wamboozle" -A 4 -B 3 
+./target/debug/pscan -ri ./src/text_files "mary" -A 4 -B 3 
 
 
