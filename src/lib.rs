@@ -168,6 +168,12 @@ fn process_paths_from_args(
         println!(""); 
         matches.len()
     }
+    
+    fn is_binary(reader: &mut BufReader<fs::File>) -> std::io::Result<bool> {
+        // Peek at the internal buffer
+        let buf = reader.fill_buf()?;
+        Ok(buf.contains(&0))
+    }
 
     fn search<'a>(
         query: &str, 
@@ -272,7 +278,11 @@ fn process_paths_from_args(
         };
 
         let mut reader: BufReader<_> = BufReader::new(file);
-        
+      
+        if let Ok(b) = is_binary(&mut reader) { 
+            if b  && parsed_args.binary_ok { return Ok(0) } 
+        };
+
         let matches = search(
             parsed_args.query, 
             &mut reader, 

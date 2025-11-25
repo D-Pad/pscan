@@ -16,6 +16,7 @@ SEARCH OPTIONS:
     -r                  Search directories recursively
     -s                  Show parsed arguments before starting search (useful for debugging)
     -t                  Trims white space from any matching lines
+    -b                  Enables binary file reading.
 
 CONTEXT CONTROL:
     -A, --after N       Print N lines of trailing context after each match
@@ -56,6 +57,8 @@ pub struct ParsedArgs<'a> {
     pub show_args: bool,
     
     pub trim: bool,
+
+    pub binary_ok: bool,
     
     pub context_before: usize,  
     pub context_after: usize,
@@ -78,6 +81,8 @@ impl<'a> fmt::Display for ParsedArgs<'a> {
             self.recursive)?;
         write!(f, "\n  \x1b[33mtrim:          \x1b[0m     {}",
             self.trim)?;
+        write!(f, "\n  \x1b[33mbinary_ok:     \x1b[0m     {}",
+            self.binary_ok)?;
         write!(f, "\n  \x1b[33mcase_sensitive:\x1b[0m     {}", 
             self.case_sensitive)?;
         write!(f, "\n  \x1b[33mcontext_before:\x1b[0m     {}",
@@ -108,7 +113,8 @@ impl<'a> ParsedArgs<'a> {
                 case_sensitive: false,
                 show_args: false,
                 trim: false, 
-                context_before: 0,  
+                binary_ok: false, 
+                context_before: 0, 
                 context_after: 0,
                 include_file_types: None,
                 exclude_file_types: None,
@@ -123,6 +129,7 @@ impl<'a> ParsedArgs<'a> {
             let mut recursive: bool = false;
             let mut show_args: bool = false;
             let mut trim: bool = false;
+            let mut binary_ok: bool = false;
             let mut case_sensitive: bool = true;
 
             let mut context_before: usize = 0;
@@ -189,6 +196,7 @@ impl<'a> ParsedArgs<'a> {
                                 else if param == 'r' { recursive = true }
                                 else if param == 's' { show_args = true }
                                 else if param == 't' { trim = true }
+                                else if param == 'b' { binary_ok = true }
                             }
                         }
                     }
@@ -231,6 +239,7 @@ impl<'a> ParsedArgs<'a> {
                     case_sensitive, 
                     show_args,
                     trim,
+                    binary_ok,
                     context_before, 
                     context_after, 
                     include_file_types, 
