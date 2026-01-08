@@ -30,8 +30,9 @@ FILE TYPE FILTERING:
                         Only search files whose extension is in the list
                         (e.g. -I rs toml yaml)
     -E, --exclude-file-types ext1 ext2 ...
-                        Skip files whose extension is in the list
-                        (e.g. -E jpg png gif)
+                        Skip files whose extension is in the list. Will also skip 
+                        directories if the directory name is included here.
+                        (e.g. -E jpg png gif node_modules)
 
 EXAMPLES:
     pscan ./src "println!"
