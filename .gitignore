@@ -1,5 +1,5 @@
 /target
-/text_files
+/src/text_files
 build.sh
 output.txt 
 

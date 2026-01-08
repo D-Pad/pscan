@@ -1,5 +1,0 @@
-Rust is a systems programming language
-that runs blazingly fast, prevents segfaults,
-and guarantees thread safety.
-Cargo is Rust's build system and package manager.
-Most Rustaceans use Cargo to manage their projects.
