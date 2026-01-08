@@ -253,7 +253,6 @@ impl<'a> ParsedArgs<'a> {
             }
         
         } else {
-            println!("ARGS RECEIVED: {:?}", args); 
             Err("Must pass a search path and phrase, in that order")
         }
     }

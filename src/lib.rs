@@ -2,7 +2,8 @@ use std::{
     collections::VecDeque, 
     env, 
     fmt, 
-    fs, 
+    fs,
+    ffi::OsStr,
     io::{BufReader, BufRead}, 
     path::Path,
     cmp::min
@@ -40,7 +41,6 @@ impl ErrorResponse {
     }
 }
 
-// This is all you need for Display
 impl fmt::Display for ErrorResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "\x1b[1;31m{}: {}\x1b[0m", self.error_type, self.error_msg)
@@ -67,7 +67,7 @@ pub fn error_handler(error_response: ErrorResponse) -> i32 {
     }
     
     err_msg.push_str(&format!("{}", error_response.error_msg));
-    println!("{}\x1b[0m", err_msg);
+    eprintln!("{}\x1b[0m", err_msg);
     exit_code
 
 }
@@ -323,7 +323,16 @@ fn process_paths_from_args(
         let mut total_matches_found: usize = 0;
 
         if scan_path.is_dir() { 
-          
+
+            if let (Some(file_name), Some(excluded)) = (
+                &scan_path.file_name().and_then(OsStr::to_str),
+                &parsed_args.exclude_file_types.as_ref()
+            ) {
+                if excluded.contains(&file_name) {
+                    return Ok(0); 
+                }
+            };
+            
             let entries = match fs::read_dir(&scan_path) {
                 Ok(en) => en,
                 Err(msg) => {
@@ -350,6 +359,7 @@ fn process_paths_from_args(
                     let this_path = entry_result.path();
 
                     if this_path.is_dir() {
+                       
                         let result = walk(&this_path, parsed_args);
                         match result {
                             Ok(i) => total_matches_found += i,

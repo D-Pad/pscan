@@ -1,0 +1,4 @@
+[1;4;35m./src/text_files/mary.txt:[0m                          -> 4
+[1;4;35m./src/text_files/combined_texts.md:[0m                 -> 12
+[1;4;35m./src/text_files/combined_texts.txt:[0m                -> 11
+[1;4;35m./src/text_files/line_break_file.txt:[0m               -> 6
