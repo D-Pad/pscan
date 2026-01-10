@@ -6,7 +6,7 @@ statement in.
 **Example use:**
 ![Sample Output](resources/output.png)
 
-Passing the `--help` flag will display the following menu
+Passing the `--help` flag will display the following manual page. 
 ```
 pscan - A grep-like tool with detailed match location and context lines
 
